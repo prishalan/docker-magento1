@@ -1,0 +1,71 @@
+version: '2'
+
+services:
+
+##### APPLICATIONS container (for shared persistent storage) #####
+  applications:
+    image: tianon/true
+    volumes:
+      - ./www:/var/www/html:z
+
+##### PHP-FPM container (PHP 7.0 FPM custom build) #####
+  phpfpm:
+    build:
+      context: ./docker/php
+      args:
+        U_ID: ${USERID}
+        G_ID: ${GROUPID}
+    image: prishalan-test:php70-fpm-alpine
+    volumes_from: 
+      - applications
+    ports:
+      - "9000:9000"
+    links:
+      - mysql
+#      - redis
+
+##### NGINX container () #####
+  nginx:
+    build:
+      context: ./docker/nginx
+      args:
+        U_ID: ${USERID}
+        G_ID: ${GROUPID}
+    image: prishalan-test:nginx-alpine
+    volumes_from:
+      - applications
+    volumes:
+      - ./logs/nginx-error.log:/var/log/nginx/error.log
+      - ./logs/nginx-access.log:/var/log/nginx/access.log
+      - ./docker/nginx/configs/default.conf:/etc/nginx/conf.d/default.conf
+    ports:
+      - "80:8080"
+    depends_on:
+      - phpfpm
+    links:
+      - phpfpm
+
+##### DATABASE container () #####
+  mysql:
+    build:
+      context: ./docker/mysql
+      args:
+        U_ID: ${USERID}
+        G_ID: ${GROUPID}
+    image: prishalan-test:mariadb-alpine
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD}
+      - MYSQL_DATABASE=${MYSQL_DATABASE}
+      - MYSQL_USER=${MYSQL_USER}
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD}
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+      - ./data/mysqldumps:/mysqldumps
+
+##### REDIS containers #####
+#  redis:
+#    image: redis:latest
+#    volumes:
+#      - ./data/redis:/var/lib/redis
+#    ports:
+#      - "6379:6379"

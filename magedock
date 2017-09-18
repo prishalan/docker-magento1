@@ -1,0 +1,143 @@
+#!/bin/sh
+# Description: 	Shell script for automating/managing custom dockerized Magento site
+# Author:		Prishalan Naidoo <prishalan.naidoo@gmail.com>
+# Updated:		2017 September 14
+
+## Output colouring
+RED='\033[1;31m'
+GRN='\033[1;32m'
+CYN='\033[1;36m'
+YEL='\033[1;33m'
+GRY='\033[0;37m'
+DEF='\033[0m'
+
+## Variables
+HEADER="\n-- MAGE-DOCK ---------------------------"
+FOOTER="----------------------------------------\n"
+
+## Load the docker project's environment file to read key-values
+source ./.env
+
+# ========= METHOD: HELP
+help () {
+	echo -e ${YEL}$HEADER${DEF};
+	echo -e "${CYN}./magedock help${DEF}\t\t\tDisplays this help blurb.";
+	echo -e "${CYN}./magedock info${DEF}\t\t\tGets info of the running containers.";
+	echo -e "${CYN}./magedock magerun [arguments]${DEF}\tAccess magerun in the phpfpm service from your host.";
+	echo -e "${CYN}./magedock composer [arguments]${DEF}\tAccess composer in the phpfpm service from your host.";
+	echo -e "${CYN}./magedock phpcmd [command]${DEF}\tIssue shell commands in the phpfpm service from your host.";
+	echo -e "${CYN}./magedock mysqldb${DEF}\t\tConnect to the MySQL client in the mysql service from your host.";
+	echo -e "${CYN}./magedock mysqlimport${DEF}\t\tRun the mysqlimport utility in the mysql service from your host.";
+	echo -e "${CYN}./magedock mysqlexport${DEF}\t\tRun the mysqlimport utility in the mysql service from your host.";
+	echo -e ${YEL}$FOOTER${DEF};
+}
+
+# ========= METHOD: INFO
+info () {
+	local mysqlip=$(docker inspect --format '{{ .NetworkSettings.Networks.'${COMPOSE_PROJECT_NAME}'_default.IPAddress }}' ${COMPOSE_PROJECT_NAME}_mysql_1);
+	local srvphp=$(docker-compose ps | grep phpfpm);
+	local srvnginx=$(docker-compose ps | grep nginx);
+	local srvmysql=$(docker-compose ps | grep mysql);
+	local hostuid=$(id -u $USER);
+	local hostgid=$(id -g $USER)
+
+	echo -e ${YEL}$HEADER${DEF};
+	echo -en "Project Name\t\t";
+	echo -e "${CYN}$COMPOSE_PROJECT_NAME${DEF}";
+	echo "";
+	echo -en "Your UserID (Host)\t";
+	echo -en "${CYN}$hostuid${DEF}";
+	if [[ "$hostuid" == "$USERID" ]];
+	then
+		echo -e " - ${GRN}OK${DEF}"
+	else
+		echo -e " - ${RED}Invalid! Please correct setting in .env file${DEF}"
+	fi
+	echo -en "Your GroupID (Host)\t";
+	echo -en "${CYN}$hostgid${DEF}";
+	if [[ "$hostgid" == "$GROUPID" ]];
+	then
+		echo -e " - ${GRN}OK${DEF}"
+	else
+		echo -e " - ${RED}Invalid! Please correct setting in .env file${DEF}"
+	fi
+	echo "";
+	echo -en "MySQL Host IP\t\t";
+	echo -e "${CYN}$mysqlip${DEF}";
+	echo -en "MySQL Username\t\t";
+	echo -e "${CYN}$MYSQL_USER${DEF}";
+	echo -en "MySQL Password\t\t";
+	echo -e "${CYN}$MYSQL_PASSWORD${DEF}";
+	echo -en "MySQL Database Name\t";
+	echo -e "${CYN}$MYSQL_DATABASE${DEF}";
+	echo "";
+	echo -en "Nginx Container\t\t";
+	if [[ $srvnginx == *"Exit 0"* ]];
+	then
+		echo -e "${RED}Offline${DEF}";
+	else
+		echo -e "${GRN}Running${DEF}";
+	fi
+	echo -en "PHP-FPM Container\t";
+	if [[ $srvphp == *"Exit 0"* ]];
+	then
+		echo -e "${RED}Offline${DEF}";
+	else
+		echo -e "${GRN}Running${DEF}";
+	fi
+	echo -en "MySQL Container\t\t";
+	if [[ $srvmysql == *"Exit 0"* ]];
+	then
+		echo -e "${RED}Offline${DEF}";
+	else
+		echo -e "${GRN}Running${DEF}";
+	fi
+
+
+	echo -e ${YEL}$FOOTER${DEF};
+}
+
+magerun () {
+	docker-compose exec phpfpm magerun ${@}
+}
+
+mysqldb () {
+	docker-compose exec mysql mysql -u $MYSQL_USER -p"$MYSQL_PASSWORD"
+}
+
+mysqlimport () {
+	docker-compose exec mysql mysqlimport
+}
+
+mysqlexport () {
+	docker-compose exec mysql mysqlexport
+}
+
+composer () {
+	docker-compose exec phpfpm composer ${@}
+}
+
+phpcmd () {
+	docker-compose exec phpfpm ${@}
+}
+
+## Script entrypoint - Check if any commands have been called
+if [ $# -eq 0 ]
+then
+	echo -e ${YEL}$HEADER${DEF};
+	echo -e "${RED}No command provided to Magedock!${DEF}";
+	echo -e ${YEL}$FOOTER${DEF};
+	exit;
+fi
+
+## Script entrypoint - Check if a valid command is called, else continue
+$@ 2>/dev/null || {
+    if [[ $? == 127 ]]; then
+    	echo -e ${YEL}$HEADER${DEF};
+        echo -e "${RED}No such command in Magedock!${DEF}";
+        echo -e ${YEL}$FOOTER${DEF};
+        exit;
+    fi
+
+    "$@"
+}
